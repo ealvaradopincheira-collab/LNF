@@ -655,7 +655,7 @@
             <p>Monitoreo Histórico Consolidado &middot; Bases de Datos Kinross</p>
         </div>
         <div class="header-meta">
-            Fecha de Elaboración: <strong>14-07-2026 16:36</strong>
+            Fecha de Elaboración: <strong>14-07-2026 16:41</strong>
         </div>
     </header>
 
@@ -23281,56 +23281,97 @@
             const NaK = Na + K;
             const maxVal = Math.max(Ca, Mg, NaK, Cl, SO4, HCO3, 0.1);
             
-            // Queremos que el máximo valor ocupe un máximo de 75px de desplazamiento lateral
-            const scale = 75 / maxVal;
+            // Determinar la escala discreta y los colores según la salinidad máxima
+            let limitVal = 5;
+            let colorHex = '#0000ff';
+            let colorRgba = 'rgba(0, 0, 255, 0.3)';
+            
+            if (maxVal <= 5) {
+                limitVal = 5;
+                colorHex = '#0000ff'; // Azul
+                colorRgba = 'rgba(0, 0, 255, 0.35)';
+            } else if (maxVal <= 10) {
+                limitVal = 10;
+                colorHex = '#00bfff'; // Celeste
+                colorRgba = 'rgba(0, 191, 255, 0.35)';
+            } else if (maxVal <= 25) {
+                limitVal = 25;
+                colorHex = '#7cdb27'; // Verde claro
+                colorRgba = 'rgba(124, 219, 39, 0.35)';
+            } else if (maxVal <= 50) {
+                limitVal = 50;
+                colorHex = '#ffd700'; // Amarillo
+                colorRgba = 'rgba(255, 215, 0, 0.35)';
+            } else {
+                // Escala para mayores de 50 (100 por defecto, o múltiplos de 50 si supera 100)
+                limitVal = Math.max(100, Math.ceil(maxVal / 50) * 50);
+                colorHex = '#e6761b'; // Naranja/Marrón
+                colorRgba = 'rgba(230, 118, 27, 0.35)';
+            }
+            
+            // El desplazamiento máximo horizontal es de 80px (centro = 100px)
+            const scale = 80 / limitVal;
             const cx = 100; // centro x
             
             const yUpper = 18;
             const yMid = 45;
             const yLower = 72;
             
+            // ORDEN DE EJES CORRECTO:
+            // Superior (Y=18): Na+K vs Cl
+            // Medio (Y=45): Mg vs SO4
+            // Inferior (Y=72): Ca vs HCO3
             const xNaK = cx - (NaK * scale);
-            const xCa = cx - (Ca * scale);
             const xMg = cx - (Mg * scale);
+            const xCa = cx - (Ca * scale);
             
             const xCl = cx + (Cl * scale);
             const xSO4 = cx + (SO4 * scale);
             const xHCO3 = cx + (HCO3 * scale);
             
-            const points = `${xNaK},${yUpper} ${xCl},${yUpper} ${xSO4},${yMid} ${xHCO3},${yLower} ${xMg},${yLower} ${xCa},${yMid}`;
+            // Puntos del polígono cerrado (orden horario)
+            const points = `${xNaK},${yUpper} ${xCl},${yUpper} ${xSO4},${yMid} ${xHCO3},${yLower} ${xCa},${yLower} ${xMg},${yMid}`;
             
             let svg = `<svg viewBox="0 0 200 92" width="100%" height="100%" style="background:#ffffff; border:1px solid var(--border-color); border-radius:4px; margin: 0 auto; display:block;">`;
             
-            // Ejes de coordenadas
+            // Barra horizontal de color para el eje de escala (salinidad)
+            svg += `<rect x="${cx - (limitVal * scale)}" y="77" width="${2 * limitVal * scale}" height="3" fill="${colorHex}" opacity="0.6" />`;
+            
+            // Ejes de coordenadas principales
             svg += `<line x1="${cx}" y1="4" x2="${cx}" y2="82" stroke="#cbd5e1" stroke-width="1.2" />`;
             svg += `<line x1="12" y1="${yUpper}" x2="188" y2="${yUpper}" stroke="#f1f5f9" stroke-width="1" />`;
             svg += `<line x1="12" y1="${yMid}" x2="188" y2="${yMid}" stroke="#f1f5f9" stroke-width="1" />`;
             svg += `<line x1="12" y1="${yLower}" x2="188" y2="${yLower}" stroke="#f1f5f9" stroke-width="1" />`;
             
-            // Textos de los ejes
+            // Textos de los ejes (con el orden correcto de iones de la escala estándar)
             svg += `<text x="6" y="14" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="start">Na+K</text>`;
             svg += `<text x="194" y="14" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="end">Cl</text>`;
             
-            svg += `<text x="6" y="49" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="start">Ca</text>`;
+            svg += `<text x="6" y="49" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="start">Mg</text>`;
             svg += `<text x="194" y="49" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="end">SO4</text>`;
             
-            svg += `<text x="6" y="83" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="start">Mg</text>`;
-            svg += `<text x="194" y="83" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="end">HCO3</text>`;
+            svg += `<text x="6" y="74" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="start">Ca</text>`;
+            svg += `<text x="194" y="74" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="end">HCO3</text>`;
             
-            // Marcado numérico de escala en el eje inferior
-            const tick_val = maxVal;
-            const tick_x_left = cx - (tick_val * scale);
-            const tick_x_right = cx + (tick_val * scale);
+            // Marcas negras de graduación en la escala inferior
+            // Dibujamos marcas cada limitVal / 10
+            for (let val = -limitVal; val <= limitVal; val += limitVal / 10) {
+                const x = cx + (val * scale);
+                const isMid = Math.abs(Math.abs(val) - limitVal/2) < 0.01;
+                const isLimit = Math.abs(Math.abs(val) - limitVal) < 0.01;
+                const isZero = Math.abs(val) < 0.01;
+                
+                const h = (isLimit || isZero) ? 5 : (isMid ? 4 : 2);
+                svg += `<line x1="${x}" y1="${80 - h}" x2="${x}" y2="80" stroke="#000000" stroke-width="0.8" />`;
+            }
             
-            svg += `<line x1="${tick_x_left}" y1="78" x2="${tick_x_left}" y2="82" stroke="#cbd5e1" stroke-width="1" />`;
-            svg += `<line x1="${tick_x_right}" y1="78" x2="${tick_x_right}" y2="82" stroke="#cbd5e1" stroke-width="1" />`;
+            // Valores numéricos de la escala
+            svg += `<text x="${cx}" y="89" font-size="7.5" fill="#475569" text-anchor="middle">0</text>`;
+            svg += `<text x="${cx - (limitVal * scale)}" y="89" font-size="7.5" fill="#475569" text-anchor="middle">${limitVal}</text>`;
+            svg += `<text x="${cx + (limitVal * scale)}" y="89" font-size="7.5" fill="#475569" text-anchor="middle">${limitVal} meq/L</text>`;
             
-            svg += `<text x="${cx}" y="90" font-size="7.5" fill="#64748b" text-anchor="middle">0</text>`;
-            svg += `<text x="${tick_x_left}" y="90" font-size="7.5" fill="#64748b" text-anchor="middle">${tick_val.toFixed(1)}</text>`;
-            svg += `<text x="${tick_x_right}" y="90" font-size="7.5" fill="#64748b" text-anchor="middle">${tick_val.toFixed(1)} meq/L</text>`;
-            
-            // Dibujar el polígono Stiff
-            svg += `<polygon points="${points}" fill="rgba(15, 118, 110, 0.35)" stroke="rgb(15, 118, 110)" stroke-width="1.8" />`;
+            // Dibujar el polígono Stiff cerrado con el color de salinidad correspondiente
+            svg += `<polygon points="${points}" fill="${colorRgba}" stroke="${colorHex}" stroke-width="1.8" />`;
             
             svg += `</svg>`;
             return svg;
