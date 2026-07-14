@@ -630,7 +630,7 @@
             <p>Monitoreo Histórico Consolidado &middot; Bases de Datos Kinross</p>
         </div>
         <div class="header-meta">
-            Fecha de Elaboración: <strong>14-07-2026 15:21</strong>
+            Fecha de Elaboración: <strong>14-07-2026 15:30</strong>
         </div>
     </header>
 
@@ -23423,7 +23423,11 @@
             const useMean = geochemViewMode === 'mean';
             const samples = rawGeochemData.samples;
 
-            let filtered = samples.filter(s => selectedWells.has(s.well_id));
+            // Algunos pozos con muestras geoquimicas (ej. A13, FRA-4, MN-1) no existen en la base
+            // de niveles piezometricos, por lo que nunca aparecen en la lista de pozos seleccionables
+            // y jamas calzarian con selectedWells. Para que su geoquimica no quede invisible, se
+            // incluyen igual mientras su sector este activo (selectedSectors).
+            let filtered = samples.filter(s => selectedWells.has(s.well_id) || (!rawWellData[s.well_id] && selectedSectors.has(s.sector)));
             if (filtered.length === 0) filtered = samples;
 
             let dataPoints = [];
@@ -23707,7 +23711,11 @@
             const useMean = geochemViewMode === 'mean';
             const samples = rawGeochemData.samples;
 
-            let filtered = samples.filter(s => selectedWells.has(s.well_id));
+            // Algunos pozos con muestras geoquimicas (ej. A13, FRA-4, MN-1) no existen en la base
+            // de niveles piezometricos, por lo que nunca aparecen en la lista de pozos seleccionables
+            // y jamas calzarian con selectedWells. Para que su geoquimica no quede invisible, se
+            // incluyen igual mientras su sector este activo (selectedSectors).
+            let filtered = samples.filter(s => selectedWells.has(s.well_id) || (!rawWellData[s.well_id] && selectedSectors.has(s.sector)));
             if (filtered.length === 0) filtered = samples;
 
             let dataPoints = [];
