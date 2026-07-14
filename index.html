@@ -648,7 +648,7 @@
             <p>Monitoreo Histórico Consolidado &middot; Bases de Datos Kinross</p>
         </div>
         <div class="header-meta">
-            Fecha de Elaboración: <strong>14-07-2026 15:55</strong>
+            Fecha de Elaboración: <strong>14-07-2026 16:32</strong>
         </div>
     </header>
 
@@ -23267,33 +23267,45 @@
             html += `<div style="font-weight: 700; font-size: 13px; color: var(--primary); margin-bottom: 2px;">${wid} (${w.tipo})</div>`;
             html += `<div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">Sector: ${w.sector}</div>`;
             
-            // Verificar si hay datos Stiff
-            if (showStiffTooltips && rawGeochemData && rawGeochemData.stiff_images && rawGeochemData.stiff_images[wid]) {
-                const stiffSamples = rawGeochemData.stiff_images[wid];
-                if (stiffSamples && stiffSamples.length > 0) {
-                    // Obtener la muestra más reciente
-                    const sample = stiffSamples[stiffSamples.length - 1];
-                    
-                    html += `<div style="border-top: 1px solid var(--border-color); padding-top: 6px; margin-top: 4px; text-align: center;">`;
-                    html += `<span style="font-size: 10px; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 4px;">Diagrama Stiff (${sample.date}) <span style="font-weight:400; color:var(--text-muted); font-style:italic;">(click para ampliar)</span></span>`;
-                    html += `<img src="${sample.path}" onclick="openImageLightbox('${sample.path}')" title="Click para ampliar" style="width: 190px; height: auto; border-radius: 4px; border: 1px solid var(--border-color); background: white; padding: 2px; cursor: zoom-in;" />`;
-                    html += `</div>`;
-                    
-                    html += `<div style="font-size: 10px; margin-top: 6px; display: flex; flex-direction: column; gap: 2px; color: var(--text-main); line-height: 1.3;">`;
-                    html += `<div style="display:flex; justify-content:space-between;"><span>Muestra:</span><strong>${sample.sample_id}</strong></div>`;
-                    html += `<div style="display:flex; justify-content:space-between;"><span>Suma Cationes:</span><strong>${sample.cations.toFixed(1)} mg/L</strong></div>`;
-                    html += `<div style="display:flex; justify-content:space-between;"><span>Suma Aniones:</span><strong>${sample.anions.toFixed(1)} mg/L</strong></div>`;
-                    
-                    const isOk = (sample.control.toLowerCase().includes('aprobada') || sample.control.toLowerCase().includes('ok') || Math.abs(sample.balance) <= 15.0);
-                    const badgeColor = isOk ? '#22c55e' : '#ef4444';
-                    
-                    html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-top: 4px;">`;
-                    html += `<span>Balance: <strong style="color:${sample.balance >= 0 ? '#22c55e' : '#ef4444'}">${sample.balance >= 0 ? '+' : ''}${sample.balance.toFixed(1)}%</strong></span>`;
-                    html += `<span style="font-size: 9px; padding: 2px 4px; border-radius: 3px; background-color: ${badgeColor}; color: white; font-weight: 700; text-transform: uppercase;">${isOk ? 'OK' : 'OUT'}</span>`;
-                    html += `</div>`;
+            const idClean = wid.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const wellSamples = (typeof rawGeochemData !== 'undefined' && rawGeochemData.samples) ? 
+                rawGeochemData.samples.filter(s => s.well_id.toUpperCase().replace(/[^A-Z0-9]/g, '') === idClean) : [];
+            const hasIsotopes = typeof rawGeochemData !== 'undefined' && rawGeochemData.isotopes && rawGeochemData.isotopes[wid];
+            const hasStiff = typeof rawGeochemData !== 'undefined' && rawGeochemData.stiff_images && rawGeochemData.stiff_images[wid] && rawGeochemData.stiff_images[wid].length > 0;
+            
+            if (wellSamples.length > 0 || hasIsotopes || hasStiff) {
+                html += `<div style="border-top: 1px solid var(--border-color); padding-top: 6px; margin-top: 4px; font-size: 11px;">`;
+                html += `<div style="font-weight: 700; color: var(--primary); margin-bottom: 4px;">Información Geoquímica:</div>`;
+                
+                if (wellSamples.length > 0) {
+                    const latest = wellSamples[wellSamples.length - 1];
+                    html += `<div style="margin-bottom: 2px;">• <strong>Química de Aguas:</strong> Sí (${wellSamples.length} muestra${wellSamples.length > 1 ? 's' : ''})</div>`;
+                    html += `<div style="padding-left: 8px; color: var(--text-muted); font-size: 10px; line-height: 1.35; margin-bottom: 4px;">`;
+                    html += `Última: ${latest.date}<br>`;
+                    html += `Balance Iónico: <strong style="color:${latest.balance >= 0 ? '#22c55e' : '#ef4444'}">${latest.balance >= 0 ? '+' : ''}${latest.balance.toFixed(1)}%</strong> (${Math.abs(latest.balance) <= 5.0 ? 'Excelente' : 'Aceptable'})<br>`;
+                    if (latest.ions_mg) {
+                        html += `Na: ${latest.ions_mg.Na} | Cl: ${latest.ions_mg.Cl} | SO4: ${latest.ions_mg.SO4} (mg/L)`;
+                    }
                     html += `</div>`;
                 } else {
-                    html += `<div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 4px; border-top: 1px solid var(--border-color); padding-top: 4px;">Sin datos Stiff registrados</div>`;
+                    html += `<div style="margin-bottom: 2px;">• <strong>Química de Aguas:</strong> No</div>`;
+                }
+                
+                if (hasIsotopes) {
+                    html += `<div style="margin-bottom: 2px;">• <strong>Isótopos:</strong> Sí (disponibles en gráfico)</div>`;
+                }
+                
+                html += `</div>`;
+                
+                // Mostrar diagrama Stiff si está activado y disponible
+                if (showStiffTooltips && hasStiff) {
+                    const stiffSamples = rawGeochemData.stiff_images[wid];
+                    const sample = stiffSamples[stiffSamples.length - 1];
+                    
+                    html += `<div style="border-top: 1px solid var(--border-color); padding-top: 6px; margin-top: 6px; text-align: center;">`;
+                    html += `<span style="font-size: 10px; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 4px;">Diagrama Stiff (${sample.date}) <span style="font-weight:400; color:var(--text-muted); font-style:italic;">(click)</span></span>`;
+                    html += `<img src="${sample.path}" onclick="openImageLightbox('${sample.path}')" title="Click para ampliar" style="width: 190px; height: auto; border-radius: 4px; border: 1px solid var(--border-color); background: white; padding: 2px; cursor: zoom-in;" />`;
+                    html += `</div>`;
                 }
             } else {
                 html += `<div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 4px; border-top: 1px solid var(--border-color); padding-top: 4px;">Sin análisis geoquímicos</div>`;
