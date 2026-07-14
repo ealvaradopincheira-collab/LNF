@@ -662,7 +662,7 @@
             <p>Monitoreo Histórico Consolidado &middot; Bases de Datos Kinross</p>
         </div>
         <div class="header-meta">
-            Fecha de Elaboración: <strong>14-07-2026 17:00</strong>
+            Fecha de Elaboración: <strong>14-07-2026 17:05</strong>
         </div>
     </header>
 
@@ -23451,14 +23451,17 @@
         function switchLocalGeochem(type) {
             document.getElementById('geochem-piper-content').style.display = (type === 'piper') ? 'flex' : 'none';
             document.getElementById('geochem-schoeller-content').style.display = (type === 'schoeller') ? 'flex' : 'none';
+            document.getElementById('geochem-gibbs-content').style.display = (type === 'gibbs') ? 'flex' : 'none';
 
             document.getElementById('btn-geochem-piper').classList.toggle('active', type === 'piper');
             document.getElementById('btn-geochem-schoeller').classList.toggle('active', type === 'schoeller');
+            document.getElementById('btn-geochem-gibbs').classList.toggle('active', type === 'gibbs');
 
             // Refrescar diagramas de Plotly
             setTimeout(() => {
                 if (type === 'piper') drawInteractivePiper();
                 if (type === 'schoeller') drawInteractiveSchoeller();
+                if (type === 'gibbs') drawInteractiveGibbs();
             }, 50);
         }
 
