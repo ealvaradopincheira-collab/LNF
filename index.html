@@ -587,6 +587,24 @@
                 min-width: 100%;
             }
         }
+        /* Switch styling for show stiff checkbox */
+        .switch-container input:checked + .switch-slider {
+            background-color: var(--primary) !important;
+        }
+        .switch-slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+        .switch-container input:checked + .switch-slider:before {
+            transform: translateX(14px);
+        }
 
     </style>
 </head>
@@ -630,7 +648,7 @@
             <p>Monitoreo Histórico Consolidado &middot; Bases de Datos Kinross</p>
         </div>
         <div class="header-meta">
-            Fecha de Elaboración: <strong>14-07-2026 15:43</strong>
+            Fecha de Elaboración: <strong>14-07-2026 15:55</strong>
         </div>
     </header>
 
@@ -664,6 +682,31 @@
                 </div>
                 <div class="list-container well-list-container" id="well-container">
                     <!-- Javascript will render items here -->
+                </div>
+            </div>
+
+            <!-- Filtros y Capas del Mapa -->
+            <div class="sidebar-section">
+                <h3>2.5 Filtros y Capas del Mapa</h3>
+                
+                <!-- Filtro de datos -->
+                <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px;">
+                    <span style="font-size: 11.5px; font-weight: 600; color: var(--text-muted);">Mostrar en Mapa:</span>
+                    <select id="select-well-filter-mode" onchange="changeWellFilterMode(this.value)" style="width:100%; padding:8px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-card); font-family:inherit; color:var(--text-main); font-weight:500; cursor:pointer;">
+                        <option value="all" selected>Todos los pozos</option>
+                        <option value="chem">Solo con Química</option>
+                        <option value="level">Solo con Nivel</option>
+                        <option value="both">Nivel y Química</option>
+                    </select>
+                </div>
+                
+                <!-- Mostrar diagramas Stiff -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px; padding: 4px 0;">
+                    <span style="font-size: 11.5px; font-weight: 600; color: var(--text-muted);">Mostrar Diagramas Stiff:</span>
+                    <label class="switch-container" style="position: relative; display: inline-block; width: 34px; height: 20px;">
+                        <input type="checkbox" id="check-show-stiff" checked onchange="changeShowStiff(this.checked)" style="opacity: 0; width: 0; height: 0;">
+                        <span class="switch-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .3s; border-radius: 20px;"></span>
+                    </label>
                 </div>
             </div>
 
@@ -22322,6 +22365,67 @@
         // State variables
         let selectedSectors = new Set();
         let selectedWells = new Set();
+        let wellFilterMode = 'all'; // 'all', 'chem', 'level', 'both'
+        let showStiffTooltips = true;
+        const wellsWithChem = new Set();
+
+        function initWellsWithChem() {
+            wellsWithChem.clear();
+            if (typeof rawGeochemData !== 'undefined') {
+                if (rawGeochemData.stiff_images) {
+                    Object.keys(rawGeochemData.stiff_images).forEach(wid => {
+                        const key = wid.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                        wellsWithChem.add(key);
+                    });
+                }
+                if (rawGeochemData.isotopes) {
+                    Object.keys(rawGeochemData.isotopes).forEach(wid => {
+                        const key = wid.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                        wellsWithChem.add(key);
+                    });
+                }
+                if (rawGeochemData.samples) {
+                    rawGeochemData.samples.forEach(s => {
+                        if (s.well_id) {
+                            const key = s.well_id.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                            wellsWithChem.add(key);
+                        }
+                    });
+                }
+            }
+        }
+
+        function wellHasChem(wid) {
+            const key = wid.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            return wellsWithChem.has(key);
+        }
+
+        function wellHasLevel(wid) {
+            const w = rawWellData[wid];
+            return w && w.nivel && w.nivel.some(v => v !== null && v !== undefined && !isNaN(v));
+        }
+
+        function changeWellFilterMode(mode) {
+            wellFilterMode = mode;
+            drawMap();
+            renderWellCheckboxes();
+        }
+
+        function changeShowStiff(val) {
+            showStiffTooltips = val;
+            // Actualizar popups y tooltips de todos los marcadores existentes en tiempo real
+            Object.keys(markers).forEach(wid => {
+                const m = markers[wid];
+                const w = rawWellData[wid];
+                if (m && w) {
+                    m.setTooltipContent(getWellTooltipContent(wid, w));
+                    // Si el popup está abierto o enlazado, actualizarlo
+                    if (m.getPopup()) {
+                        m.setPopupContent(getWellTooltipContent(wid, w));
+                    }
+                }
+            });
+        }
         let activeVariable = 'piezo'; // 'piezo' or 'nivel'
         let activeChartType = 'scatter'; // 'lines', 'scatter', or 'bar'
         let activeMarkerSize = 6;
@@ -22662,6 +22766,7 @@
         }
 
         function initDashboard() {
+            initWellsWithChem();
             initLeafletMap();
 
             // Select all sectors by default
@@ -23163,7 +23268,7 @@
             html += `<div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">Sector: ${w.sector}</div>`;
             
             // Verificar si hay datos Stiff
-            if (rawGeochemData && rawGeochemData.stiff_images && rawGeochemData.stiff_images[wid]) {
+            if (showStiffTooltips && rawGeochemData && rawGeochemData.stiff_images && rawGeochemData.stiff_images[wid]) {
                 const stiffSamples = rawGeochemData.stiff_images[wid];
                 if (stiffSamples && stiffSamples.length > 0) {
                     // Obtener la muestra más reciente
@@ -23230,6 +23335,24 @@
             Object.keys(rawWellData).forEach(wid => {
                 const w = rawWellData[wid];
                 if(w.lat === null || w.lon === null) return;
+                
+                // Aplicar filtros de química, nivel o combinación de ambos
+                const hasChem = wellHasChem(wid);
+                const hasLevel = wellHasLevel(wid);
+                let matchesFilter = true;
+                if (wellFilterMode === 'chem') matchesFilter = hasChem;
+                else if (wellFilterMode === 'level') matchesFilter = hasLevel;
+                else if (wellFilterMode === 'both') matchesFilter = hasChem && hasLevel;
+                
+                const show = matchesFilter && sectorMatch(w.sector);
+                
+                if (!show) {
+                    if (markers[wid]) {
+                        map.removeLayer(markers[wid]);
+                        delete markers[wid];
+                    }
+                    return;
+                }
                 
                 const sel = selectedWells.has(wid);
                 const color = (visualMode === 'sector') ? getWellColor(wid) : getIndividualWellColor(wid);
