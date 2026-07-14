@@ -648,7 +648,7 @@
             <p>Monitoreo Histórico Consolidado &middot; Bases de Datos Kinross</p>
         </div>
         <div class="header-meta">
-            Fecha de Elaboración: <strong>14-07-2026 16:32</strong>
+            Fecha de Elaboración: <strong>14-07-2026 16:34</strong>
         </div>
     </header>
 
@@ -23262,6 +23262,73 @@
             Plotly.newPlot('series-chart', traces, layout, {responsive: true});
         }
 
+        function generateStiffSVG(ions_meq) {
+            const Ca = parseFloat(ions_meq.Ca || 0);
+            const Mg = parseFloat(ions_meq.Mg || 0);
+            const Na = parseFloat(ions_meq.Na || 0);
+            const K = parseFloat(ions_meq.K || 0);
+            const Cl = parseFloat(ions_meq.Cl || 0);
+            const SO4 = parseFloat(ions_meq.SO4 || 0);
+            const HCO3 = parseFloat(ions_meq.HCO3 || 0);
+            
+            const NaK = Na + K;
+            const maxVal = Math.max(Ca, Mg, NaK, Cl, SO4, HCO3, 0.1);
+            
+            // Queremos que el máximo valor ocupe un máximo de 75px de desplazamiento lateral
+            const scale = 75 / maxVal;
+            const cx = 100; // centro x
+            
+            const yUpper = 18;
+            const yMid = 45;
+            const yLower = 72;
+            
+            const xNaK = cx - (NaK * scale);
+            const xCa = cx - (Ca * scale);
+            const xMg = cx - (Mg * scale);
+            
+            const xCl = cx + (Cl * scale);
+            const xSO4 = cx + (SO4 * scale);
+            const xHCO3 = cx + (HCO3 * scale);
+            
+            const points = `${xNaK},${yUpper} ${xCl},${yUpper} ${xSO4},${yMid} ${xHCO3},${yLower} ${xMg},${yLower} ${xCa},${yMid}`;
+            
+            let svg = `<svg width="200" height="92" style="background:#ffffff; border:1px solid var(--border-color); border-radius:4px; margin: 4px auto; display:block;">`;
+            
+            // Ejes de coordenadas
+            svg += `<line x1="${cx}" y1="4" x2="${cx}" y2="82" stroke="#cbd5e1" stroke-width="1.2" />`;
+            svg += `<line x1="12" y1="${yUpper}" x2="188" y2="${yUpper}" stroke="#f1f5f9" stroke-width="1" />`;
+            svg += `<line x1="12" y1="${yMid}" x2="188" y2="${yMid}" stroke="#f1f5f9" stroke-width="1" />`;
+            svg += `<line x1="12" y1="${yLower}" x2="188" y2="${yLower}" stroke="#f1f5f9" stroke-width="1" />`;
+            
+            // Textos de los ejes
+            svg += `<text x="6" y="14" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="start">Na+K</text>`;
+            svg += `<text x="194" y="14" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="end">Cl</text>`;
+            
+            svg += `<text x="6" y="49" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="start">Ca</text>`;
+            svg += `<text x="194" y="49" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="end">SO4</text>`;
+            
+            svg += `<text x="6" y="83" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="start">Mg</text>`;
+            svg += `<text x="194" y="83" font-size="8.5" font-family:inherit; fill="#64748b" text-anchor="end">HCO3</text>`;
+            
+            // Marcado numérico de escala en el eje inferior
+            const tick_val = maxVal;
+            const tick_x_left = cx - (tick_val * scale);
+            const tick_x_right = cx + (tick_val * scale);
+            
+            svg += `<line x1="${tick_x_left}" y1="78" x2="${tick_x_left}" y2="82" stroke="#cbd5e1" stroke-width="1" />`;
+            svg += `<line x1="${tick_x_right}" y1="78" x2="${tick_x_right}" y2="82" stroke="#cbd5e1" stroke-width="1" />`;
+            
+            svg += `<text x="${cx}" y="90" font-size="7.5" fill="#64748b" text-anchor="middle">0</text>`;
+            svg += `<text x="${tick_x_left}" y="90" font-size="7.5" fill="#64748b" text-anchor="middle">${tick_val.toFixed(1)}</text>`;
+            svg += `<text x="${tick_x_right}" y="90" font-size="7.5" fill="#64748b" text-anchor="middle">${tick_val.toFixed(1)} meq/L</text>`;
+            
+            // Dibujar el polígono Stiff
+            svg += `<polygon points="${points}" fill="rgba(15, 118, 110, 0.35)" stroke="rgb(15, 118, 110)" stroke-width="1.8" />`;
+            
+            svg += `</svg>`;
+            return svg;
+        }
+
         function getWellTooltipContent(wid, w) {
             let html = `<div style="font-family:'Outfit', sans-serif; padding: 4px; min-width: 200px;">`;
             html += `<div style="font-weight: 700; font-size: 13px; color: var(--primary); margin-bottom: 2px;">${wid} (${w.tipo})</div>`;
@@ -23297,15 +23364,24 @@
                 
                 html += `</div>`;
                 
-                // Mostrar diagrama Stiff si está activado y disponible
-                if (showStiffTooltips && hasStiff) {
-                    const stiffSamples = rawGeochemData.stiff_images[wid];
-                    const sample = stiffSamples[stiffSamples.length - 1];
-                    
-                    html += `<div style="border-top: 1px solid var(--border-color); padding-top: 6px; margin-top: 6px; text-align: center;">`;
-                    html += `<span style="font-size: 10px; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 4px;">Diagrama Stiff (${sample.date}) <span style="font-weight:400; color:var(--text-muted); font-style:italic;">(click)</span></span>`;
-                    html += `<img src="${sample.path}" onclick="openImageLightbox('${sample.path}')" title="Click para ampliar" style="width: 190px; height: auto; border-radius: 4px; border: 1px solid var(--border-color); background: white; padding: 2px; cursor: zoom-in;" />`;
-                    html += `</div>`;
+                // Mostrar diagrama Stiff si está activado
+                if (showStiffTooltips) {
+                    if (hasStiff) {
+                        const stiffSamples = rawGeochemData.stiff_images[wid];
+                        const sample = stiffSamples[stiffSamples.length - 1];
+                        
+                        html += `<div style="border-top: 1px solid var(--border-color); padding-top: 6px; margin-top: 6px; text-align: center;">`;
+                        html += `<span style="font-size: 10px; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 4px;">Diagrama Stiff (${sample.date}) <span style="font-weight:400; color:var(--text-muted); font-style:italic;">(click)</span></span>`;
+                        html += `<img src="${sample.path}" onclick="openImageLightbox('${sample.path}')" title="Click para ampliar" style="width: 190px; height: auto; border-radius: 4px; border: 1px solid var(--border-color); background: white; padding: 2px; cursor: zoom-in;" />`;
+                        html += `</div>`;
+                    } else if (wellSamples.length > 0 && wellSamples[wellSamples.length - 1].ions_meq) {
+                        // Generar Stiff SVG dinámico en tiempo real si tiene muestras y no tiene imagen estática
+                        const latest = wellSamples[wellSamples.length - 1];
+                        html += `<div style="border-top: 1px solid var(--border-color); padding-top: 6px; margin-top: 6px; text-align: center;">`;
+                        html += `<span style="font-size: 10px; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 4px;">Diagrama Stiff Vectorial (${latest.date})</span>`;
+                        html += generateStiffSVG(latest.ions_meq);
+                        html += `</div>`;
+                    }
                 }
             } else {
                 html += `<div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 4px; border-top: 1px solid var(--border-color); padding-top: 4px;">Sin análisis geoquímicos</div>`;
