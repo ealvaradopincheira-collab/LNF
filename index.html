@@ -635,12 +635,19 @@
             document.getElementById('image-lightbox-img').src = src;
             document.getElementById('image-lightbox-overlay').style.display = 'flex';
         }
-        function openSVGLightbox(ions_meq) {
-            let svgString = generateStiffSVG(ions_meq);
-            // Reemplazar estilos del SVG para que se dibuje de forma óptima a pantalla completa en el lightbox
-            svgString = svgString.replace('style="background:#ffffff; border:1px solid var(--border-color); border-radius:4px; margin: 0 auto; display:block;"', 'style="background:#ffffff; padding:15px; width:100%; height:100%;"');
-            const svgBase64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgString)));
-            openImageLightbox(svgBase64);
+        function openSVGLightbox(wid) {
+            const idClean = wid.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            if (typeof rawGeochemData === 'undefined' || !rawGeochemData.samples) return;
+            const wellSamples = rawGeochemData.samples.filter(s => s.well_id.toUpperCase().replace(/[^A-Z0-9]/g, '') === idClean);
+            if (wellSamples.length === 0) return;
+            
+            const latest = wellSamples[wellSamples.length - 1];
+            let svgString = generateStiffSVG(latest.ions_meq);
+            // Reemplazar de forma robusta cualquier estilo original del SVG para pantalla completa en el lightbox
+            svgString = svgString.replace(/style="[^"]*"/, 'style="background:#ffffff; padding:20px; width:100%; height:100%;"');
+            // Usar codificación UTF-8 directa (encodeURIComponent)
+            const svgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
+            openImageLightbox(svgDataUrl);
         }
         function closeImageLightbox() {
             document.getElementById('image-lightbox-overlay').style.display = 'none';
@@ -655,7 +662,7 @@
             <p>Monitoreo Histórico Consolidado &middot; Bases de Datos Kinross</p>
         </div>
         <div class="header-meta">
-            Fecha de Elaboración: <strong>14-07-2026 16:41</strong>
+            Fecha de Elaboración: <strong>14-07-2026 16:48</strong>
         </div>
     </header>
 
@@ -23386,13 +23393,13 @@
             const wellSamples = (typeof rawGeochemData !== 'undefined' && rawGeochemData.samples) ? 
                 rawGeochemData.samples.filter(s => s.well_id.toUpperCase().replace(/[^A-Z0-9]/g, '') === idClean) : [];
             const hasIsotopes = typeof rawGeochemData !== 'undefined' && rawGeochemData.isotopes && rawGeochemData.isotopes[wid];
-            const hasStiff = typeof rawGeochemData !== 'undefined' && rawGeochemData.stiff_images && rawGeochemData.stiff_images[wid] && rawGeochemData.stiff_images[wid].length > 0;
+            const hasChem = wellSamples.length > 0;
             
-            if (wellSamples.length > 0 || hasIsotopes || hasStiff) {
+            if (hasChem || hasIsotopes) {
                 html += `<div style="border-top: 1px solid var(--border-color); padding-top: 6px; margin-top: 4px; font-size: 11px;">`;
                 html += `<div style="font-weight: 700; color: var(--primary); margin-bottom: 4px;">Información Geoquímica:</div>`;
                 
-                if (wellSamples.length > 0) {
+                if (hasChem) {
                     const latest = wellSamples[wellSamples.length - 1];
                     html += `<div style="margin-bottom: 2px;">• <strong>Química de Aguas:</strong> Sí (${wellSamples.length} muestra${wellSamples.length > 1 ? 's' : ''})</div>`;
                     html += `<div style="padding-left: 8px; color: var(--text-muted); font-size: 10px; line-height: 1.35; margin-bottom: 4px;">`;
@@ -23412,28 +23419,17 @@
                 
                 html += `</div>`;
                 
-                // Mostrar diagrama Stiff si está activado
-                if (showStiffTooltips) {
-                    if (hasStiff) {
-                        const stiffSamples = rawGeochemData.stiff_images[wid];
-                        const sample = stiffSamples[stiffSamples.length - 1];
-                        
-                        html += `<div style="border-top: 1px solid var(--border-color); padding-top: 6px; margin-top: 6px; text-align: center;">`;
-                        html += `<span style="font-size: 10px; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 4px;">Diagrama Stiff (${sample.date}) <span style="font-weight:400; color:var(--text-muted); font-style:italic;">(click)</span></span>`;
-                        html += `<img src="${sample.path}" onclick="openImageLightbox('${sample.path}')" title="Click para ampliar" style="width: 190px; height: auto; border-radius: 4px; border: 1px solid var(--border-color); background: white; padding: 2px; cursor: zoom-in;" />`;
-                        html += `</div>`;
-                    } else if (wellSamples.length > 0 && wellSamples[wellSamples.length - 1].ions_meq) {
-                        // Generar Stiff SVG dinámico en tiempo real si tiene muestras y no tiene imagen estática
-                        const latest = wellSamples[wellSamples.length - 1];
-                        const ions_meq_str = JSON.stringify(latest.ions_meq).replace(/"/g, '&quot;');
-                        
-                        html += `<div style="border-top: 1px solid var(--border-color); padding-top: 6px; margin-top: 6px; text-align: center;">`;
-                        html += `<span style="font-size: 10px; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 4px;">Diagrama Stiff Vectorial (${latest.date}) <span style="font-weight:400; color:var(--text-muted); font-style:italic;">(click)</span></span>`;
-                        html += `<div onclick="openSVGLightbox(${ions_meq_str})" title="Click para ampliar" style="width: 190px; height: 87px; margin: 0 auto; cursor: zoom-in;">`;
-                        html += generateStiffSVG(latest.ions_meq);
-                        html += `</div>`;
-                        html += `</div>`;
-                    }
+                // Mostrar diagrama Stiff dinámico vectorial (todos los pozos se unifican por código para homogeneidad y zoom nítido)
+                if (showStiffTooltips && hasChem && wellSamples[wellSamples.length - 1].ions_meq) {
+                    const latest = wellSamples[wellSamples.length - 1];
+                    
+                    html += `<div style="border-top: 1px solid var(--border-color); padding-top: 6px; margin-top: 6px; text-align: center;">`;
+                    html += `<span style="font-size: 10px; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 4px;">Diagrama Stiff Vectorial (${latest.date}) <span style="font-weight:400; color:var(--text-muted); font-style:italic;">(click)</span></span>`;
+                    // Pasamos wid (string) directamente en lugar del JSON stringificado para evitar errores de escape en el HTML
+                    html += `<div onclick="openSVGLightbox('${wid}')" title="Click para ampliar" style="width: 190px; height: 87px; margin: 0 auto; cursor: zoom-in;">`;
+                    html += generateStiffSVG(latest.ions_meq);
+                    html += `</div>`;
+                    html += `</div>`;
                 }
             } else {
                 html += `<div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 4px; border-top: 1px solid var(--border-color); padding-top: 4px;">Sin análisis geoquímicos</div>`;
@@ -23506,7 +23502,8 @@
                         direction: 'top',
                         className: 'stiff-tooltip',
                         sticky: true,
-                        opacity: 0.98
+                        opacity: 0.98,
+                        interactive: true
                     });
                     // Popup: se abre al hacer click y queda fija (no se cierra al mover el mouse),
                     // a diferencia del tooltip de hover, que desaparece automaticamente.
