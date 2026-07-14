@@ -662,7 +662,7 @@
             <p>Monitoreo Histórico Consolidado &middot; Bases de Datos Kinross</p>
         </div>
         <div class="header-meta">
-            Fecha de Elaboración: <strong>14-07-2026 16:48</strong>
+            Fecha de Elaboración: <strong>14-07-2026 17:00</strong>
         </div>
     </header>
 
@@ -847,9 +847,10 @@
                             <button class="fullscreen-btn" id="geochem-fs-label" onclick="toggleGeochemFullscreen()" style="position: absolute; top: 12px; right: 20px;">Pantalla Completa</button>
                             <h3 style="margin:0; font-family:'Outfit'; font-size:15px; font-weight:600; color:var(--text-main);">Geoquímica: <span id="geochem-sector-title" style="color:var(--primary); font-weight:600;">General</span></h3>
                             <div style="display: flex; flex-wrap: wrap; gap: 8px; width: 100%;">
-                                <div class="btn-group" style="margin-top: 4px; display: flex; max-width: 180px;">
+                                <div class="btn-group" style="margin-top: 4px; display: flex; max-width: 250px;">
                                     <button class="active" id="btn-geochem-piper" onclick="switchLocalGeochem('piper')">Piper</button>
-                                    <button id="btn-geochem-schoeller" onclick="switchLocalGeochem('schoeller')">Scholler</button>
+                                    <button id="btn-geochem-schoeller" onclick="switchLocalGeochem('schoeller')">Schoeller</button>
+                                    <button id="btn-geochem-gibbs" onclick="switchLocalGeochem('gibbs')">Gibbs</button>
                                 </div>
                                 <div class="btn-group" style="margin-top: 4px; display: flex; max-width: 220px;">
                                     <button class="active" id="btn-geochem-view-all" onclick="switchGeochemView('all')">Todos los datos</button>
@@ -865,6 +866,10 @@
                             <div id="geochem-schoeller-content" style="width: 100%; height: 100%; display: none; align-items: center; justify-content: center; flex-direction: column;">
                                 <h4 style="font-family:'Outfit'; font-size:12px; margin-bottom:4px; color:var(--text-muted); font-weight: 500;">Diagrama de Schoeller (Interactivo)</h4>
                                 <div id="schoeller-plotly-container" style="width: 100%; height: 460px;"></div>
+                            </div>
+                            <div id="geochem-gibbs-content" style="width: 100%; height: 100%; display: none; align-items: center; justify-content: center; flex-direction: column;">
+                                <h4 style="font-family:'Outfit'; font-size:12px; margin-bottom:4px; color:var(--text-muted); font-weight: 500;">Diagrama de Gibbs (Interactivo)</h4>
+                                <div id="gibbs-plotly-container" style="width: 100%; height: 460px;"></div>
                             </div>
                         </div>
                     </div>
@@ -24069,6 +24074,255 @@
             Plotly.newPlot('schoeller-plotly-container', plotlyTraces, layout, { responsive: true, displayModeBar: false });
         }
 
+        function drawInteractiveGibbs() {
+            const chartDiv = document.getElementById('gibbs-plotly-container');
+            if (!chartDiv || !rawGeochemData || !rawGeochemData.samples) return;
+
+            const useMean = geochemViewMode === 'mean';
+            const samples = rawGeochemData.samples;
+
+            let filtered = samples.filter(s => selectedWells.has(s.well_id) || (!rawWellData[s.well_id] && selectedSectors.has(s.sector)));
+            if (filtered.length === 0) filtered = samples;
+
+            let dataPoints = [];
+            if (useMean) {
+                const sectorGroup = {};
+                filtered.forEach(s => {
+                    const sec = s.sector || 'Sin sector';
+                    if (!sectorGroup[sec]) sectorGroup[sec] = [];
+                    sectorGroup[sec].push(s);
+                });
+
+                Object.keys(sectorGroup).forEach(sec => {
+                    const group = sectorGroup[sec];
+                    const count = group.length;
+
+                    let caSum = 0, mgSum = 0, naSum = 0, kSum = 0, clSum = 0, so4Sum = 0, hco3Sum = 0;
+                    let caMg = 0, mgMg = 0, naMg = 0, kMg = 0, clMg = 0, so4Mg = 0, hco3Mg = 0;
+                    group.forEach(s => {
+                        caSum += s.ions_meq.Ca; mgSum += s.ions_meq.Mg; naSum += s.ions_meq.Na; kSum += s.ions_meq.K;
+                        clSum += s.ions_meq.Cl; so4Sum += s.ions_meq.SO4; hco3Sum += s.ions_meq.HCO3;
+                        caMg += s.ions_mg.Ca; mgMg += s.ions_mg.Mg; naMg += s.ions_mg.Na; kMg += s.ions_mg.K;
+                        clMg += s.ions_mg.Cl; so4Mg += s.ions_mg.SO4; hco3Mg += s.ions_mg.HCO3;
+                    });
+
+                    dataPoints.push({
+                        well_id: sec,
+                        sector: sec,
+                        isMean: true,
+                        count: count,
+                        ions_meq: {
+                            Ca: caSum / count, Mg: mgSum / count, Na: naSum / count, K: kSum / count,
+                            Cl: clSum / count, SO4: so4Sum / count, HCO3: hco3Sum / count
+                        },
+                        ions_mg: {
+                            Ca: caMg / count, Mg: mgMg / count, Na: naMg / count, K: kMg / count,
+                            Cl: clMg / count, SO4: so4Mg / count, HCO3: hco3Mg / count
+                        }
+                    });
+                });
+            } else {
+                dataPoints = filtered.map(s => ({ ...s, isMean: false }));
+            }
+
+            const traces = {};
+            dataPoints.forEach(p => {
+                const sec = p.sector || 'Sin sector';
+                const Ca = p.ions_meq.Ca || 0;
+                const Na = p.ions_meq.Na || 0;
+                const K = p.ions_meq.K || 0;
+                const Cl = p.ions_meq.Cl || 0;
+                const HCO3 = p.ions_meq.HCO3 || 0;
+                
+                const NaK = Na + K;
+                const cat_ratio = (NaK + Ca > 0) ? (NaK) / (NaK + Ca) : 0;
+                const ani_ratio = (Cl + HCO3 > 0) ? Cl / (Cl + HCO3) : 0;
+                
+                const tds = (p.ions_mg.Ca || 0) + (p.ions_mg.Mg || 0) + (p.ions_mg.Na || 0) + (p.ions_mg.K || 0) + 
+                            (p.ions_mg.Cl || 0) + (p.ions_mg.SO4 || 0) + (p.ions_mg.HCO3 || 0);
+
+                if (tds <= 0) return;
+
+                if (!traces[sec]) {
+                    traces[sec] = {
+                        cat: { x: [], y: [], text: [] },
+                        ani: { x: [], y: [], text: [] }
+                    };
+                }
+
+                const balanceNote = (!p.isMean && typeof p.balance === 'number' && Math.abs(p.balance) > 10)
+                    ? `<br><span style="color:#ef4444">⚠ Balance iónico: ${p.balance.toFixed(1)}%</span>` : '';
+
+                const hoverText = p.isMean
+                    ? `<b>Sector: ${sec} (Media)</b><br>Muestras: ${p.count}<br>TDS (estimado): ${tds.toFixed(0)} mg/L<br>Na/(Na+Ca): ${cat_ratio.toFixed(2)}<br>Cl/(Cl+HCO3): ${ani_ratio.toFixed(2)}`
+                    : `<b>Pozo: ${p.well_id}</b><br>Sector: ${sec}<br>Fecha: ${p.date}<br>TDS (estimado): ${tds.toFixed(0)} mg/L<br>Na/(Na+Ca): ${cat_ratio.toFixed(2)}<br>Cl/(Cl+HCO3): ${ani_ratio.toFixed(2)}${balanceNote}`;
+
+                traces[sec].cat.x.push(cat_ratio);
+                traces[sec].cat.y.push(tds);
+                traces[sec].cat.text.push(hoverText);
+
+                traces[sec].ani.x.push(ani_ratio);
+                traces[sec].ani.y.push(tds);
+                traces[sec].ani.text.push(hoverText);
+            });
+
+            const plotlyTraces = [];
+            const markerSymbol = useMean ? 'star' : 'circle';
+            const markerSize = useMean ? 13 : 6;
+            const markerLine = useMean ? { color: '#1e293b', width: 1 } : { width: 0 };
+
+            const g_cat_x_left = [0.85, 0.4, 0.15, 0.1, 0.15, 0.4, 0.8];
+            const g_cat_x_right = [0.99, 0.9, 0.65, 0.5, 0.65, 0.9, 0.99];
+            const g_y_common = [10, 30, 100, 500, 2000, 10000, 50000];
+
+            plotlyTraces.push({
+                x: g_cat_x_left,
+                y: g_y_common,
+                mode: 'lines',
+                line: { color: '#cbd5e1', width: 1.2, dash: 'dash' },
+                showlegend: false,
+                xaxis: 'x1',
+                yaxis: 'y1',
+                hoverinfo: 'none'
+            });
+            plotlyTraces.push({
+                x: g_cat_x_right,
+                y: g_y_common,
+                mode: 'lines',
+                line: { color: '#cbd5e1', width: 1.2, dash: 'dash' },
+                showlegend: false,
+                xaxis: 'x1',
+                yaxis: 'y1',
+                hoverinfo: 'none'
+            });
+
+            const g_ani_x_left = [0.9, 0.5, 0.2, 0.1, 0.15, 0.4, 0.8];
+            const g_ani_x_right = [0.99, 0.95, 0.7, 0.55, 0.7, 0.95, 0.99];
+
+            plotlyTraces.push({
+                x: g_ani_x_left,
+                y: g_y_common,
+                mode: 'lines',
+                line: { color: '#cbd5e1', width: 1.2, dash: 'dash' },
+                showlegend: false,
+                xaxis: 'x2',
+                yaxis: 'y1',
+                hoverinfo: 'none'
+            });
+            plotlyTraces.push({
+                x: g_ani_x_right,
+                y: g_y_common,
+                mode: 'lines',
+                line: { color: '#cbd5e1', width: 1.2, dash: 'dash' },
+                showlegend: false,
+                xaxis: 'x2',
+                yaxis: 'y1',
+                hoverinfo: 'none'
+            });
+
+            Object.keys(traces).forEach(sec => {
+                const color = getGeochemSectorColor(sec);
+
+                plotlyTraces.push({
+                    x: traces[sec].cat.x,
+                    y: traces[sec].cat.y,
+                    text: traces[sec].cat.text,
+                    mode: 'markers',
+                    name: sec,
+                    legendgroup: sec,
+                    xaxis: 'x1',
+                    yaxis: 'y1',
+                    marker: { size: markerSize, color: color, symbol: markerSymbol, line: markerLine },
+                    hovertemplate: '%{text}<extra></extra>'
+                });
+
+                plotlyTraces.push({
+                    x: traces[sec].ani.x,
+                    y: traces[sec].ani.y,
+                    text: traces[sec].ani.text,
+                    mode: 'markers',
+                    name: sec,
+                    legendgroup: sec,
+                    showlegend: false,
+                    xaxis: 'x2',
+                    yaxis: 'y1',
+                    marker: { size: markerSize, color: color, symbol: markerSymbol, line: markerLine },
+                    hovertemplate: '%{text}<extra></extra>'
+                });
+            });
+
+            const layout = {
+                grid: { rows: 1, columns: 2, pattern: 'independent' },
+                title: false,
+                margin: { l: 45, r: 15, t: 20, b: 40 },
+                showlegend: true,
+                legend: {
+                    orientation: 'h',
+                    y: -0.2,
+                    x: 0.5,
+                    xanchor: 'center',
+                    font: { size: 9 }
+                },
+                xaxis1: {
+                    title: 'Na / (Na + Ca) (meq/L)',
+                    range: [0, 1.0],
+                    tickvals: [0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                    gridcolor: '#e2e8f0',
+                    linecolor: '#94a3b8',
+                    font: { size: 8 }
+                },
+                xaxis2: {
+                    title: 'Cl / (Cl + HCO3) (meq/L)',
+                    range: [0, 1.0],
+                    tickvals: [0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                    gridcolor: '#e2e8f0',
+                    linecolor: '#94a3b8',
+                    font: { size: 8 }
+                },
+                yaxis: {
+                    title: 'TDS (mg/L)',
+                    type: 'log',
+                    range: [1.0, 5.0],
+                    tickvals: [10, 100, 1000, 10000, 100000],
+                    tickformat: '~s',
+                    gridcolor: '#e2e8f0',
+                    linecolor: '#94a3b8',
+                    font: { size: 8 }
+                },
+                annotations: [
+                    {
+                        x: 0.75, y: 4.4, xref: 'x1', yref: 'y1', text: 'Evaporación',
+                        showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
+                    },
+                    {
+                        x: 0.25, y: 2.6, xref: 'x1', yref: 'y1', text: 'Dominio de la Roca',
+                        showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
+                    },
+                    {
+                        x: 0.75, y: 1.2, xref: 'x1', yref: 'y1', text: 'Precipitación',
+                        showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
+                    },
+                    {
+                        x: 0.75, y: 4.4, xref: 'x2', yref: 'y1', text: 'Evaporación',
+                        showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
+                    },
+                    {
+                        x: 0.25, y: 2.6, xref: 'x2', yref: 'y1', text: 'Dominio de la Roca',
+                        showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
+                    },
+                    {
+                        x: 0.75, y: 1.2, xref: 'x2', yref: 'y1', text: 'Precipitación',
+                        showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
+                    }
+                ],
+                plot_bgcolor: '#ffffff',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                hovermode: 'closest'
+            };
+
+            Plotly.newPlot('gibbs-plotly-container', plotlyTraces, layout, { responsive: true, displayModeBar: false });
+        }
+
         function updateGeochemImages() {
             if (!rawGeochemData || !rawGeochemData.samples) return;
             let activeSector = "General";
@@ -24081,6 +24335,7 @@
 
             drawInteractivePiper();
             drawInteractiveSchoeller();
+            drawInteractiveGibbs();
         }
 
         function updateIsotopesChart() {
