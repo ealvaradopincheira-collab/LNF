@@ -662,7 +662,7 @@
             <p>Monitoreo Histórico Consolidado &middot; Bases de Datos Kinross</p>
         </div>
         <div class="header-meta">
-            Fecha de Elaboración: <strong>15-07-2026 16:03</strong>
+            Fecha de Elaboración: <strong>15-07-2026 16:13</strong>
         </div>
     </header>
 
@@ -1072,6 +1072,16 @@
         // (los sectores de muestras Piper/Schoeller/Isotopos no siempre calzan 1:1 con los
         // sectores de pozos usados en sectorColors).
         function getGeochemSectorColor(sec) {
+            // Unificar con el mapa de colores consistente del mapa y niveles
+            if (sectorColors && sectorColors[sec]) {
+                return sectorColors[sec];
+            }
+            // Buscar con reemplazo de caracteres
+            const secNorm = sec.replace('Subterranea', 'Subterránea');
+            if (sectorColors && sectorColors[secNorm]) {
+                return sectorColors[secNorm];
+            }
+            // Hash por defecto si no se encuentra
             let hash = 0;
             for (let i = 0; i < sec.length; i++) hash = sec.charCodeAt(i) + ((hash << 5) - hash);
             const hue = Math.abs(hash) % 360;
@@ -2564,7 +2574,8 @@
 
             dataPoints.forEach(p => {
                 const wid = p.well_id;
-                const color = getIndividualWellColor(wid);
+                const sec = p.sector || (rawWellData[wid] ? rawWellData[wid].sector : 'Cienaga Redonda, Maricunga y otros');
+                const color = getGeochemSectorColor(sec);
 
                 const yValues = ionsList.map(ion => p.ions_meq[ion] > 0 ? p.ions_meq[ion] : 0.001);
 
@@ -2585,7 +2596,7 @@
                     text: hoverTexts,
                     mode: 'lines+markers',
                     name: p.isMean ? `${wid} (Promedio)` : `${wid} (${p.date})`,
-                    legendgroup: wid,
+                    legendgroup: sec,
                     line: { color: color, width: 1.2 },
                     marker: { size: 5, color: color },
                     hovertemplate: '%{text}<extra></extra>'
@@ -2690,24 +2701,27 @@
                 const balanceNote = (!p.isMean && typeof p.balance === 'number' && Math.abs(p.balance) > 10)
                     ? `<br><span style="color:#ef4444">⚠ Balance iónico: ${p.balance.toFixed(1)}%</span>` : '';
 
-                const hoverText = p.isMean
-                    ? `<b>Sector: ${sec} (Media)</b><br>Muestras: ${p.count}<br>TDS (estimado): ${tds.toFixed(0)} mg/L<br>Na/(Na+Ca): ${cat_ratio.toFixed(2)}<br>Cl/(Cl+HCO3): ${ani_ratio.toFixed(2)}`
-                    : `<b>Pozo: ${p.well_id}</b><br>Sector: ${sec}<br>Fecha: ${p.date}<br>Tipo de Agua: <b>${(p.tipo_agua || 'Subterránea').replace('Subterranea', 'Subterránea')}</b><br>TDS (estimado): ${tds.toFixed(0)} mg/L<br>Na/(Na+Ca): ${cat_ratio.toFixed(2)}<br>Cl/(Cl+HCO3): ${ani_ratio.toFixed(2)}${balanceNote}`;
+                // Crear hover específico para cada punto
+                const hoverTextCat = p.isMean
+                    ? `<b>Sector: ${sec} (Media)</b><br>Muestras: ${p.count}<br>TDS (estimado): ${tds.toFixed(0)} mg/L<br>Relación Catiónica Na/(Na+Ca): <b>${cat_ratio.toFixed(2)}</b>`
+                    : `<b>Pozo: ${p.well_id}</b><br>Sector: ${sec}<br>Fecha: ${p.date}<br>Tipo de Agua: <b>${(p.tipo_agua || 'Subterránea').replace('Subterranea', 'Subterránea')}</b><br>TDS (estimado): ${tds.toFixed(0)} mg/L<br>Relación Catiónica Na/(Na+Ca): <b>${cat_ratio.toFixed(2)}</b>${balanceNote}`;
+
+                const hoverTextAni = p.isMean
+                    ? `<b>Sector: ${sec} (Media)</b><br>Muestras: ${p.count}<br>TDS (estimado): ${tds.toFixed(0)} mg/L<br>Relación Aniónica Cl/(Cl+HCO3): <b>${ani_ratio.toFixed(2)}</b>`
+                    : `<b>Pozo: ${p.well_id}</b><br>Sector: ${sec}<br>Fecha: ${p.date}<br>Tipo de Agua: <b>${(p.tipo_agua || 'Subterránea').replace('Subterranea', 'Subterránea')}</b><br>TDS (estimado): ${tds.toFixed(0)} mg/L<br>Relación Aniónica Cl/(Cl+HCO3): <b>${ani_ratio.toFixed(2)}</b>${balanceNote}`;
 
                 traces[sec].cat.x.push(cat_ratio);
                 traces[sec].cat.y.push(tds);
-                traces[sec].cat.text.push(hoverText);
+                traces[sec].cat.text.push(hoverTextCat);
 
                 traces[sec].ani.x.push(ani_ratio);
                 traces[sec].ani.y.push(tds);
-                traces[sec].ani.text.push(hoverText);
+                traces[sec].ani.text.push(hoverTextAni);
             });
 
             const plotlyTraces = [];
-            const markerSymbol = useMean ? 'star' : 'circle';
-            const markerSize = useMean ? 13 : 6;
-            const markerLine = useMean ? { color: '#1e293b', width: 1 } : { width: 0 };
-
+            
+            // Dibujar el boomerang de Gibbs en el fondo (unificado usando la envoltura clásica)
             const g_cat_x_left = [0.85, 0.4, 0.15, 0.1, 0.15, 0.4, 0.8];
             const g_cat_x_right = [0.99, 0.9, 0.65, 0.5, 0.65, 0.9, 0.99];
             const g_y_common = [10, 30, 100, 500, 2000, 10000, 50000];
@@ -2718,8 +2732,6 @@
                 mode: 'lines',
                 line: { color: '#cbd5e1', width: 1.2, dash: 'dash' },
                 showlegend: false,
-                xaxis: 'x1',
-                yaxis: 'y1',
                 hoverinfo: 'none'
             });
             plotlyTraces.push({
@@ -2728,38 +2740,24 @@
                 mode: 'lines',
                 line: { color: '#cbd5e1', width: 1.2, dash: 'dash' },
                 showlegend: false,
-                xaxis: 'x1',
-                yaxis: 'y1',
                 hoverinfo: 'none'
             });
 
-            const g_ani_x_left = [0.9, 0.5, 0.2, 0.1, 0.15, 0.4, 0.8];
-            const g_ani_x_right = [0.99, 0.95, 0.7, 0.55, 0.7, 0.95, 0.99];
-
-            plotlyTraces.push({
-                x: g_ani_x_left,
-                y: g_y_common,
-                mode: 'lines',
-                line: { color: '#cbd5e1', width: 1.2, dash: 'dash' },
-                showlegend: false,
-                xaxis: 'x2',
-                yaxis: 'y1',
-                hoverinfo: 'none'
-            });
-            plotlyTraces.push({
-                x: g_ani_x_right,
-                y: g_y_common,
-                mode: 'lines',
-                line: { color: '#cbd5e1', width: 1.2, dash: 'dash' },
-                showlegend: false,
-                xaxis: 'x2',
-                yaxis: 'y1',
-                hoverinfo: 'none'
-            });
-
+            // Graficar las muestras de cada sector
             Object.keys(traces).forEach(sec => {
                 const color = getGeochemSectorColor(sec);
+                
+                // Marcador para Cationes (Círculo para individual, Estrella para promedios)
+                const catSymbol = useMean ? 'star' : 'circle';
+                const catSize = useMean ? 13 : 6.5;
+                const catLine = useMean ? { color: '#1e293b', width: 1.2 } : { width: 0 };
+                
+                // Marcador para Aniones (Cuadrado para individual, Diamante para promedios)
+                const aniSymbol = useMean ? 'diamond' : 'square';
+                const aniSize = useMean ? 11 : 6.5;
+                const aniLine = useMean ? { color: '#1e293b', width: 1.2 } : { width: 0 };
 
+                // Trace Catiónico: representa el sector en la leyenda
                 plotlyTraces.push({
                     x: traces[sec].cat.x,
                     y: traces[sec].cat.y,
@@ -2767,12 +2765,11 @@
                     mode: 'markers',
                     name: sec,
                     legendgroup: sec,
-                    xaxis: 'x1',
-                    yaxis: 'y1',
-                    marker: { size: markerSize, color: color, symbol: markerSymbol, line: markerLine },
+                    marker: { size: catSize, color: color, symbol: catSymbol, line: catLine },
                     hovertemplate: '%{text}<extra></extra>'
                 });
 
+                // Trace Aniónico: se oculta en la leyenda pero comparte el legendgroup
                 plotlyTraces.push({
                     x: traces[sec].ani.x,
                     y: traces[sec].ani.y,
@@ -2781,35 +2778,44 @@
                     name: sec,
                     legendgroup: sec,
                     showlegend: false,
-                    xaxis: 'x2',
-                    yaxis: 'y1',
-                    marker: { size: markerSize, color: color, symbol: markerSymbol, line: markerLine },
+                    marker: { size: aniSize, color: color, symbol: aniSymbol, line: aniLine },
                     hovertemplate: '%{text}<extra></extra>'
                 });
             });
 
+            // Traces ficticios para servir de guía en la leyenda de Plotly
+            plotlyTraces.push({
+                x: [null],
+                y: [null],
+                mode: 'markers',
+                name: 'Relación Catiónica: (Na+K)/(Na+K+Ca) (◯ / ☆)',
+                marker: { symbol: useMean ? 'star' : 'circle', color: '#64748b', size: useMean ? 10 : 8 },
+                showlegend: true,
+                hoverinfo: 'none'
+            });
+            plotlyTraces.push({
+                x: [null],
+                y: [null],
+                mode: 'markers',
+                name: 'Relación Aniónica: Cl/(Cl+HCO3) (☐ / ◇)',
+                marker: { symbol: useMean ? 'diamond' : 'square', color: '#64748b', size: useMean ? 9 : 8 },
+                showlegend: true,
+                hoverinfo: 'none'
+            });
+
             const layout = {
-                grid: { rows: 1, columns: 2, pattern: 'independent' },
                 title: false,
                 margin: { l: 45, r: 15, t: 20, b: 40 },
                 showlegend: true,
                 legend: {
                     orientation: 'h',
-                    y: -0.2,
+                    y: -0.22,
                     x: 0.5,
                     xanchor: 'center',
-                    font: { size: 9 }
-                },
-                xaxis1: {
-                    title: 'Na / (Na + Ca) (meq/L)',
-                    range: [0, 1.0],
-                    tickvals: [0, 0.2, 0.4, 0.6, 0.8, 1.0],
-                    gridcolor: '#e2e8f0',
-                    linecolor: '#94a3b8',
                     font: { size: 8 }
                 },
-                xaxis2: {
-                    title: 'Cl / (Cl + HCO3) (meq/L)',
+                xaxis: {
+                    title: 'Relación Iónica (Na+K)/(Na+K+Ca) o Cl/(Cl+HCO3) (meq/L)',
                     range: [0, 1.0],
                     tickvals: [0, 0.2, 0.4, 0.6, 0.8, 1.0],
                     gridcolor: '#e2e8f0',
@@ -2828,27 +2834,15 @@
                 },
                 annotations: [
                     {
-                        x: 0.75, y: 4.4, xref: 'x1', yref: 'y1', text: 'Evaporación',
+                        x: 0.75, y: 4.4, text: 'Evaporación',
                         showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
                     },
                     {
-                        x: 0.25, y: 2.6, xref: 'x1', yref: 'y1', text: 'Dominio de la Roca',
+                        x: 0.25, y: 2.6, text: 'Dominio de la Roca',
                         showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
                     },
                     {
-                        x: 0.75, y: 1.2, xref: 'x1', yref: 'y1', text: 'Precipitación',
-                        showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
-                    },
-                    {
-                        x: 0.75, y: 4.4, xref: 'x2', yref: 'y1', text: 'Evaporación',
-                        showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
-                    },
-                    {
-                        x: 0.25, y: 2.6, xref: 'x2', yref: 'y1', text: 'Dominio de la Roca',
-                        showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
-                    },
-                    {
-                        x: 0.75, y: 1.2, xref: 'x2', yref: 'y1', text: 'Precipitación',
+                        x: 0.75, y: 1.2, text: 'Precipitación',
                         showarrow: false, font: { size: 8, color: '#94a3b8', style: 'italic' }
                     }
                 ],
